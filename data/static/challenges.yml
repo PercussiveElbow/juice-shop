@@ -678,9 +678,6 @@
   hintUrl: 'https://pwning.owasp-juice.shop/part2/xss.html#perform-a-reflected-xss-attack'
   mitigationUrl: 'https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html'
   key: reflectedXssChallenge
-  disabledEnv:
-    - Docker
-    - Heroku
 -
   name: 'Repetitive Registration'
   category: 'Improper Input Validation'
@@ -768,9 +765,6 @@
   hintUrl: 'https://pwning.owasp-juice.shop/part2/injection.html#infect-the-server-with-juicy-malware-by-abusing-arbitrary-command-execution'
   mitigationUrl: ~
   key: sstiChallenge
-  disabledEnv:
-    - Docker
-    - Heroku
 -
   name: 'Score Board'
   category: 'Miscellaneous'
