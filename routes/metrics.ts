@@ -1,9 +1,12 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2022 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
 import models = require('../models/index')
+import { retrieveChallengesWithCodeSnippet } from './vulnCodeSnippet'
+import { Request, Response, NextFunction } from 'express'
+
 const Prometheus = require('prom-client')
 const onFinished = require('on-finished')
 const orders = require('../data/mongodb').orders
@@ -11,6 +14,7 @@ const reviews = require('../data/mongodb').reviews
 const challenges = require('../data/datacache').challenges
 const utils = require('../lib/utils')
 const antiCheat = require('../lib/antiCheat')
+const accuracy = require('../lib/accuracy')
 const config = require('config')
 const Op = models.Sequelize.Op
 
@@ -35,7 +39,7 @@ exports.observeRequestMetricsMiddleware = function observeRequestMetricsMiddlewa
     labelNames: ['status_code']
   })
 
-  return (req, res, next) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     onFinished(res, () => {
       const statusCode = `${Math.floor(res.statusCode / 100)}XX`
       httpRequestsMetric.labels(statusCode).inc()
@@ -45,7 +49,7 @@ exports.observeRequestMetricsMiddleware = function observeRequestMetricsMiddlewa
 }
 
 exports.observeFileUploadMetricsMiddleware = function observeFileUploadMetricsMiddleware () {
-  return ({ file }, res, next) => {
+  return ({ file }: Request, res: Response, next: NextFunction) => {
     onFinished(res, () => {
       if (file) {
         res.statusCode < 400 ? fileUploadsCountMetric.labels(file.mimetype).inc() : fileUploadErrorsMetric.labels(file.mimetype).inc()
@@ -56,9 +60,9 @@ exports.observeFileUploadMetricsMiddleware = function observeFileUploadMetricsMi
 }
 
 exports.serveMetrics = function serveMetrics () {
-  return (req, res, next) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     utils.solveIf(challenges.exposedMetricsChallenge, () => {
-      const userAgent = req.headers['user-agent'] || ''
+      const userAgent = req.headers['user-agent'] ?? ''
       return !userAgent.includes('Prometheus')
     })
     res.set('Content-Type', register.contentType)
@@ -89,10 +93,21 @@ exports.observeMetrics = function observeMetrics () {
     labelNames: ['difficulty', 'category']
   })
 
+  const codingChallengesProgressMetrics = new Prometheus.Gauge({
+    name: `${app}_coding_challenges_progress`,
+    help: 'Number of coding challenges grouped by progression phase.',
+    labelNames: ['phase']
+  })
+
   const cheatScoreMetrics = new Prometheus.Gauge({
     name: `${app}_cheat_score`,
-    help: 'Overall probability that any challenges were solved by cheating.',
-    labelNames: ['type']
+    help: 'Overall probability that any hacking or coding challenges were solved by cheating.'
+  })
+
+  const accuracyMetrics = new Prometheus.Gauge({
+    name: `${app}_coding_challenges_accuracy`,
+    help: 'Overall accuracy while solving coding challenges grouped by phase.',
+    labelNames: ['phase']
   })
 
   const orderMetrics = new Prometheus.Gauge({
@@ -145,7 +160,23 @@ exports.observeMetrics = function observeMetrics () {
       challengeTotalMetrics.set({ difficulty, category }, challengeCount.get(key))
     }
 
+    void retrieveChallengesWithCodeSnippet().then(challenges => {
+      models.Challenge.count({ where: { codingChallengeStatus: { [Op.eq]: 1 } } }).then(count => {
+        codingChallengesProgressMetrics.set({ phase: 'find it' }, count)
+      })
+
+      models.Challenge.count({ where: { codingChallengeStatus: { [Op.eq]: 2 } } }).then(count => {
+        codingChallengesProgressMetrics.set({ phase: 'fix it' }, count)
+      })
+
+      models.Challenge.count({ where: { codingChallengeStatus: { [Op.ne]: 0 } } }).then(count => {
+        codingChallengesProgressMetrics.set({ phase: 'unsolved' }, challenges.length - count)
+      })
+    })
+
     cheatScoreMetrics.set(antiCheat.totalCheatScore())
+    accuracyMetrics.set({ phase: 'find it' }, accuracy.totalFindItAccuracy())
+    accuracyMetrics.set({ phase: 'fix it' }, accuracy.totalFixItAccuracy())
 
     orders.count({}).then(orders => {
       orderMetrics.set(orders)
@@ -155,7 +186,7 @@ exports.observeMetrics = function observeMetrics () {
       interactionsMetrics.set({ type: 'review' }, reviews)
     })
 
-    models.User.count({ where: { role: { [Op.eq]: ['customer'] } } }).then(count => {
+    models.User.count({ where: { role: { [Op.eq]: 'customer' } } }).then(count => {
       userMetrics.set({ type: 'standard' }, count)
     })
     models.User.count({ where: { role: { [Op.eq]: 'deluxe' } } }).then(count => {

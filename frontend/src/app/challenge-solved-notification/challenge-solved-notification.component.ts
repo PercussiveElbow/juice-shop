@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2022 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
@@ -49,6 +49,9 @@ export class ChallengeSolvedNotificationComponent implements OnInit {
           }
           if (!data.isRestore) {
             this.saveProgress()
+            import('../../confetti').then(module => {
+              module.shootConfetti()
+            })
           }
           this.io.socket().emit('notification received', data.flag)
         }

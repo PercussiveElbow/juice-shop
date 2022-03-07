@@ -1,19 +1,23 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2022 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
 import fs = require('fs')
-const models = require('../models/index')
+import { Request, Response, NextFunction } from 'express'
+
+import models = require('../models/index')
 const utils = require('../lib/utils')
 const security = require('../lib/insecurity')
 const challenges = require('../data/datacache').challenges
 const pug = require('pug')
 const config = require('config')
 const themes = require('../views/themes/themes').themes
+const Entities = require('html-entities').AllHtmlEntities
+const entities = new Entities()
 
 module.exports = function getUserProfile () {
-  return (req, res, next) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     fs.readFile('views/userProfile.pug', function (err, buf) {
       if (err != null) throw err
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
@@ -35,7 +39,7 @@ module.exports = function getUserProfile () {
           const theme = themes[config.get('application.theme')]
           template = template.replace(/_username_/g, username)
           template = template.replace(/_emailHash_/g, security.hash(user.dataValues.email))
-          template = template.replace(/_title_/g, config.get('application.name'))
+          template = template.replace(/_title_/g, entities.encode(config.get('application.name')))
           template = template.replace(/_favicon_/g, favicon())
           template = template.replace(/_bgColor_/g, theme.bgColor)
           template = template.replace(/_textColor_/g, theme.textColor)
@@ -52,7 +56,7 @@ module.exports = function getUserProfile () {
           })
 
           res.send(fn(user.dataValues))
-        }).catch(error => {
+        }).catch((error: Error) => {
           next(error)
         })
       } else {
